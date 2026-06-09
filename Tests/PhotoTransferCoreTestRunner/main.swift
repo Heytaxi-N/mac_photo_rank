@@ -7,6 +7,7 @@ struct PhotoTransferCoreTestRunner {
     static func main() throws {
         try selectionOrderAssignsAndCompactsNumbers()
         try fileNameUsesFolderNameAndPaddedSequence()
+        try defaultRootDirectoryUsesWeidianProductsFolder()
         try uniqueFolderAddsNumericSuffix()
         try exporterWritesOnlySelectedPhotosAsJPEGs()
         try overwriteRemovesStaleOutputFolder()
@@ -34,6 +35,13 @@ struct PhotoTransferCoreTestRunner {
         try expect(ExportNamer.fileName(folderName: "红标短裤", index: 1, totalCount: 10) == "红标短裤01.jpg", "index 1 should be padded")
         try expect(ExportNamer.fileName(folderName: "红标短裤", index: 10, totalCount: 10) == "红标短裤10.jpg", "index 10 should not gain extra padding")
         try expect(ExportNamer.fileName(folderName: "红标短裤", index: 100, totalCount: 120) == "红标短裤100.jpg", "three digit totals should use three digits")
+    }
+
+    private static func defaultRootDirectoryUsesWeidianProductsFolder() throws {
+        try expect(
+            PhotoExporter.defaultRootDirectory.path == "/Users/nick/Downloads/weidian_products-main/商品图",
+            "default root directory should point to weidian_products-main 商品图"
+        )
     }
 
     private static func uniqueFolderAddsNumericSuffix() throws {

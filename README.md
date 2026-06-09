@@ -24,7 +24,7 @@
 图片会导出到：
 
 ```text
-/Users/nick/Downloads/微店批量上架/商品图/<文件夹名>/
+/Users/nick/Downloads/weidian_products-main/商品图/<文件夹名>/
 ```
 
 输出文件统一为 JPG，例如：

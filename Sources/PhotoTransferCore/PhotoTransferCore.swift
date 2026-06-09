@@ -126,7 +126,7 @@ public struct ExportResult: Equatable {
 }
 
 public enum PhotoExporter {
-    public static let defaultRootDirectory = URL(fileURLWithPath: "/Users/nick/Downloads/微店批量上架/商品图", isDirectory: true)
+    public static let defaultRootDirectory = URL(fileURLWithPath: "/Users/nick/Downloads/weidian_products-main/商品图", isDirectory: true)
 
     public static func export(
         photos: [OrderedPhoto],
