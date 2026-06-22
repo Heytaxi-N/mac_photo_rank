@@ -69,7 +69,10 @@ public enum ExportError: LocalizedError, Equatable {
 }
 
 public enum ExportNamer {
-    public static func fileName(folderName: String, index: Int, totalCount: Int) -> String {
+    public static func fileName(folderName: String, index: Int, totalCount: Int, hasSizeChart: Bool = false) -> String {
+        if hasSizeChart, index == totalCount {
+            return "尺码表.jpg"
+        }
         let width = max(2, String(totalCount).count)
         return "\(folderName)\(String(format: "%0\(width)d", index)).jpg"
     }
@@ -133,6 +136,7 @@ public enum PhotoExporter {
         order: PhotoOrder,
         folderName: String,
         rootDirectory: URL = defaultRootDirectory,
+        hasSizeChart: Bool = false,
         conflictResolution: ExportConflictResolution
     ) throws -> ExportResult {
         let cleanName = ExportDestination.sanitizeFolderName(folderName)
@@ -161,7 +165,7 @@ public enum PhotoExporter {
         var failedItems: [URL] = []
 
         for (offset, photo) in selectedPhotos.enumerated() {
-            let fileName = ExportNamer.fileName(folderName: cleanName, index: offset + 1, totalCount: total)
+            let fileName = ExportNamer.fileName(folderName: cleanName, index: offset + 1, totalCount: total, hasSizeChart: hasSizeChart)
             let outputURL = outputDirectory.appendingPathComponent(fileName)
             do {
                 guard let jpgData = try JPEGConverter.jpegData(from: photo.sourceURL) else {

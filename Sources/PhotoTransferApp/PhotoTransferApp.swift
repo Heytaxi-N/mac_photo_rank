@@ -68,6 +68,9 @@ struct PhotoTransferView: View {
                     model.prepareExport()
                 }
 
+            Toggle("有尺码表", isOn: $model.hasSizeChart)
+                .toggleStyle(.checkbox)
+
             Button {
                 model.clearOrder()
             } label: {
@@ -212,6 +215,7 @@ final class PhotoTransferViewModel: ObservableObject {
     @Published var resultMessage = ""
     @Published var showResultAlert = false
     @Published var showConflictDialog = false
+    @Published var hasSizeChart = false
 
     let acceptedTypeIdentifiers = [
         UTType.fileURL.identifier,
@@ -237,6 +241,9 @@ final class PhotoTransferViewModel: ObservableObject {
         if selectedCount == 0 {
             return "点击缩略图开始编号"
         }
+        if hasSizeChart {
+            return "将导出 \(selectedCount) 张 JPG，最后一张为尺码表"
+        }
         return "将导出 \(selectedCount) 张 JPG"
     }
 
@@ -256,6 +263,7 @@ final class PhotoTransferViewModel: ObservableObject {
         photos.removeAll()
         order.clear()
         ignoredDropCount = 0
+        hasSizeChart = false
     }
 
     func addProviders(_ providers: [NSItemProvider]) -> Bool {
@@ -317,6 +325,7 @@ final class PhotoTransferViewModel: ObservableObject {
                 photos: photos.map(\.orderedPhoto),
                 order: order,
                 folderName: folderName,
+                hasSizeChart: hasSizeChart,
                 conflictResolution: conflictResolution
             )
 

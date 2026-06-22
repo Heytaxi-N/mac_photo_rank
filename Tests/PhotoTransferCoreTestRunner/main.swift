@@ -7,9 +7,12 @@ struct PhotoTransferCoreTestRunner {
     static func main() throws {
         try selectionOrderAssignsAndCompactsNumbers()
         try fileNameUsesFolderNameAndPaddedSequence()
+        try fileNameUsesNumberedNameByDefault()
+        try fileNameUsesSizeChartNameWhenSelected()
         try defaultRootDirectoryUsesWeidianProductsFolder()
         try uniqueFolderAddsNumericSuffix()
         try exporterWritesOnlySelectedPhotosAsJPEGs()
+        try exporterNamesLastSelectedPhotoAsSizeChartWhenSelected()
         try overwriteRemovesStaleOutputFolder()
         print("PhotoTransferCoreTestRunner: all tests passed")
     }
@@ -33,8 +36,17 @@ struct PhotoTransferCoreTestRunner {
 
     private static func fileNameUsesFolderNameAndPaddedSequence() throws {
         try expect(ExportNamer.fileName(folderName: "红标短裤", index: 1, totalCount: 10) == "红标短裤01.jpg", "index 1 should be padded")
-        try expect(ExportNamer.fileName(folderName: "红标短裤", index: 10, totalCount: 10) == "红标短裤10.jpg", "index 10 should not gain extra padding")
+        try expect(ExportNamer.fileName(folderName: "红标短裤", index: 10, totalCount: 11) == "红标短裤10.jpg", "index 10 should not gain extra padding")
         try expect(ExportNamer.fileName(folderName: "红标短裤", index: 100, totalCount: 120) == "红标短裤100.jpg", "three digit totals should use three digits")
+    }
+
+    private static func fileNameUsesNumberedNameByDefault() throws {
+        try expect(ExportNamer.fileName(folderName: "红标短裤", index: 3, totalCount: 3) == "红标短裤03.jpg", "last exported file should use numbered name by default")
+    }
+
+    private static func fileNameUsesSizeChartNameWhenSelected() throws {
+        try expect(ExportNamer.fileName(folderName: "红标短裤", index: 3, totalCount: 3, hasSizeChart: true) == "尺码表.jpg", "last exported file should be named 尺码表.jpg when selected")
+        try expect(ExportNamer.fileName(folderName: "红标短裤", index: 2, totalCount: 3, hasSizeChart: true) == "红标短裤02.jpg", "non-last exported file should keep numbered name")
     }
 
     private static func defaultRootDirectoryUsesWeidianProductsFolder() throws {
@@ -93,7 +105,42 @@ struct PhotoTransferCoreTestRunner {
         try expect(result.outputDirectory.lastPathComponent == "红标短裤", "output folder should use folder name")
         try expect(FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("红标短裤01.jpg").path), "first JPG should exist")
         try expect(FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("红标短裤02.jpg").path), "second JPG should exist")
+        try expect(!FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("尺码表.jpg").path), "size chart should not be exported unless selected")
         try expect(!FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("红标短裤03.jpg").path), "unselected file should not create third JPG")
+    }
+
+    private static func exporterNamesLastSelectedPhotoAsSizeChartWhenSelected() throws {
+        let root = try makeTemporaryDirectory()
+        let source = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: root)
+            try? FileManager.default.removeItem(at: source)
+        }
+
+        let firstURL = source.appendingPathComponent("first.png")
+        let secondURL = source.appendingPathComponent("second.png")
+        try makePNGData(color: .red).write(to: firstURL)
+        try makePNGData(color: .blue).write(to: secondURL)
+
+        let first = OrderedPhoto(id: UUID(), sourceURL: firstURL)
+        let second = OrderedPhoto(id: UUID(), sourceURL: secondURL)
+        var order = PhotoOrder()
+        order.toggle(first.id)
+        order.toggle(second.id)
+
+        let result = try PhotoExporter.export(
+            photos: [first, second],
+            order: order,
+            folderName: "红标短裤",
+            rootDirectory: root,
+            hasSizeChart: true,
+            conflictResolution: .cancelIfExists
+        )
+
+        try expect(result.exportedCount == 2, "two selected images should be exported")
+        try expect(FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("红标短裤01.jpg").path), "first JPG should exist")
+        try expect(FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("尺码表.jpg").path), "last JPG should be named 尺码表")
+        try expect(!FileManager.default.fileExists(atPath: result.outputDirectory.appendingPathComponent("红标短裤02.jpg").path), "last JPG should not use numbered name when size chart is selected")
     }
 
     private static func overwriteRemovesStaleOutputFolder() throws {
