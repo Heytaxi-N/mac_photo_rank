@@ -1,14 +1,22 @@
 import AppKit
+import AVFoundation
 import Foundation
 import UniformTypeIdentifiers
+
+public enum MediaKind: Hashable {
+    case image
+    case video
+}
 
 public struct OrderedPhoto: Identifiable, Hashable {
     public let id: UUID
     public let sourceURL: URL
+    public let kind: MediaKind
 
-    public init(id: UUID = UUID(), sourceURL: URL) {
+    public init(id: UUID = UUID(), sourceURL: URL, kind: MediaKind = .image) {
         self.id = id
         self.sourceURL = sourceURL
+        self.kind = kind
     }
 }
 
@@ -53,6 +61,7 @@ public enum ExportError: LocalizedError, Equatable {
     case noSelectedPhotos
     case destinationExists(URL)
     case cannotCreateJPEG(URL)
+    case cannotCreateVideo(URL)
 
     public var errorDescription: String? {
         switch self {
@@ -64,6 +73,8 @@ public enum ExportError: LocalizedError, Equatable {
             return "目标文件夹已存在：\(url.path)"
         case .cannotCreateJPEG(let url):
             return "无法转换为 JPG：\(url.lastPathComponent)"
+        case .cannotCreateVideo(let url):
+            return "无法转换为 MP4：\(url.lastPathComponent)"
         }
     }
 }
@@ -75,6 +86,15 @@ public enum ExportNamer {
         }
         let width = max(2, String(totalCount).count)
         return "\(folderName)\(String(format: "%0\(width)d", index)).jpg"
+    }
+
+    public static func videoFileName(index: Int, totalCount: Int, pathExtension: String) -> String {
+        let width = max(2, String(totalCount).count)
+        let baseName = "视频\(String(format: "%0\(width)d", index))"
+        guard !pathExtension.isEmpty else {
+            return baseName
+        }
+        return "\(baseName).\(pathExtension)"
     }
 }
 
@@ -160,19 +180,31 @@ public enum PhotoExporter {
 
         let photoByID = Dictionary(uniqueKeysWithValues: photos.map { ($0.id, $0) })
         let selectedPhotos = order.orderedIDs.compactMap { photoByID[$0] }
-        let total = selectedPhotos.count
+        let totalImages = selectedPhotos.filter { $0.kind == .image }.count
+        let totalVideos = selectedPhotos.filter { $0.kind == .video }.count
+        var imageIndex = 0
+        var videoIndex = 0
         var exportedCount = 0
         var failedItems: [URL] = []
 
-        for (offset, photo) in selectedPhotos.enumerated() {
-            let fileName = ExportNamer.fileName(folderName: cleanName, index: offset + 1, totalCount: total, hasSizeChart: hasSizeChart)
-            let outputURL = outputDirectory.appendingPathComponent(fileName)
+        for photo in selectedPhotos {
             do {
-                guard let jpgData = try JPEGConverter.jpegData(from: photo.sourceURL) else {
-                    failedItems.append(photo.sourceURL)
-                    continue
+                switch photo.kind {
+                case .image:
+                    imageIndex += 1
+                    let fileName = ExportNamer.fileName(folderName: cleanName, index: imageIndex, totalCount: totalImages, hasSizeChart: hasSizeChart)
+                    let outputURL = outputDirectory.appendingPathComponent(fileName)
+                    guard let jpgData = try JPEGConverter.jpegData(from: photo.sourceURL) else {
+                        failedItems.append(photo.sourceURL)
+                        continue
+                    }
+                    try jpgData.write(to: outputURL, options: .atomic)
+                case .video:
+                    videoIndex += 1
+                    let fileName = ExportNamer.videoFileName(index: videoIndex, totalCount: totalVideos, pathExtension: "mp4")
+                    let outputURL = outputDirectory.appendingPathComponent(fileName)
+                    try VideoConverter.exportMP4(from: photo.sourceURL, to: outputURL)
                 }
-                try jpgData.write(to: outputURL, options: .atomic)
                 exportedCount += 1
             } catch {
                 failedItems.append(photo.sourceURL)
@@ -188,12 +220,79 @@ public enum PhotoExporter {
     }
 }
 
+enum VideoConverter {
+    static func exportMP4(from sourceURL: URL, to outputURL: URL) throws {
+        if sourceURL.pathExtension.lowercased() == "mp4" {
+            try FileManager.default.copyItem(at: sourceURL, to: outputURL)
+            return
+        }
+
+        let asset = AVURLAsset(url: sourceURL)
+        var lastError: Error?
+
+        for preset in [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality] {
+            guard let session = AVAssetExportSession(asset: asset, presetName: preset),
+                  session.supportedFileTypes.contains(.mp4)
+            else {
+                continue
+            }
+            do {
+                try runExport(session, outputURL: outputURL)
+                return
+            } catch {
+                lastError = error
+                try? FileManager.default.removeItem(at: outputURL)
+            }
+        }
+
+        throw lastError ?? ExportError.cannotCreateVideo(sourceURL)
+    }
+
+    private static func runExport(_ session: AVAssetExportSession, outputURL: URL) throws {
+        session.outputURL = outputURL
+        session.outputFileType = .mp4
+
+        let semaphore = DispatchSemaphore(value: 0)
+        session.exportAsynchronously {
+            semaphore.signal()
+        }
+        semaphore.wait()
+
+        guard session.status == .completed else {
+            throw session.error ?? ExportError.cannotCreateVideo(outputURL)
+        }
+    }
+}
+
+public enum MediaFileDetector {
+    private static let fallbackVideoExtensions: Set<String> = ["mp4", "mov", "m4v", "avi", "mkv", "webm"]
+
+    public static func kind(for url: URL) -> MediaKind? {
+        let pathExtension = url.pathExtension.lowercased()
+        if let type = UTType(filenameExtension: pathExtension) {
+            if type.conforms(to: .image) {
+                return .image
+            }
+            if type.conforms(to: .movie) {
+                return .video
+            }
+        }
+        if fallbackVideoExtensions.contains(pathExtension) {
+            return .video
+        }
+        return nil
+    }
+}
+
 public enum ImageFileDetector {
     public static func isSupportedImageURL(_ url: URL) -> Bool {
-        guard let type = UTType(filenameExtension: url.pathExtension) else {
-            return false
-        }
-        return type.conforms(to: .image)
+        MediaFileDetector.kind(for: url) == .image
+    }
+}
+
+public enum VideoFileDetector {
+    public static func isSupportedVideoURL(_ url: URL) -> Bool {
+        MediaFileDetector.kind(for: url) == .video
     }
 }
 
